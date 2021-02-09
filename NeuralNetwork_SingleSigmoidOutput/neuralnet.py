@@ -81,13 +81,20 @@ class Layer:
         self.A = self.activation(self.Z)
 
 
+    def l2_regularization_derivative(self):
+        if self.network.lmbda <= 0.0:
+            return 0.0
+        else:
+            return (self.network.lmbda / self.network.m) * self.W
+
+
     def backward_propagation(self):
         if self.previous_layer is None:
             return
         else:
             self.dZ = self.dA * self.activation_prime(self.Z)
             m = self.previous_layer.A.shape[1]
-            self.dW = (1.0 / m) * np.dot(self.dZ, self.previous_layer.A.T)
+            self.dW = (1.0 / m) * np.dot(self.dZ, self.previous_layer.A.T) + self.l2_regularization_derivative()
             self.db = (1.0 / m) * np.sum(self.dZ, axis=1, keepdims=True)
             if self.previous_layer.previous_layer is not None:
                 self.previous_layer.dA = np.dot(self.W.T, self.dZ)
@@ -100,12 +107,13 @@ class Layer:
 
 class Network:
 
-    def __init__(self, num_inputs, learning_rate=1.0, initialization_factor=1.0):
+    def __init__(self, num_inputs, learning_rate=1.0, initialization_factor=1.0, lmbda=0.0):
         
         self.layers = []
         self.num_inputs = num_inputs
         self.learning_rate = learning_rate
         self.initialization_factor = initialization_factor
+        self.lmbda = lmbda
         self.cost = None
         self.cost_history = []
         self.gradients = None
@@ -140,11 +148,23 @@ class Network:
         self.predictions = (self.AL > 0.5) * 1.0
     
 
-    def calculate_cost(self, Y):
+    def l2_regularization_cost(self):
+        if self.lmbda <= 0.0:
+            return 0.0
+        else:
+            cost = 0.0
+            for layer in self.layers:
+                if layer.previous_layer is not None:
+                    cost += np.sum(np.square(layer.W))
+            return (self.lmbda / (2.0 * self.m)) * cost
+
+
+    def calculate_cost(self, Y, lmbda=0.0): # cross-entropy with possible L2 regularization
         self.Y = Y
-        self.cost = (-1.0 / self.Y.shape[1]) * np.sum((self.Y * np.log(self.AL)) + ((1.0 - Y) * np.log(1.0 - self.AL)))
+        self.m = self.Y.shape[1]
+        self.cost = (-1.0 / self.m) * np.sum((self.Y * np.log(self.AL)) + ((1.0 - Y) * np.log(1.0 - self.AL))) + self.l2_regularization_cost()
         self.cost_history.append(self.cost)
-        self.accuracy = np.sum(self.predictions == self.Y) * 100.0 / self.Y.shape[1]
+        self.accuracy = (np.sum(self.predictions == self.Y) / self.m) * 100.0
     
 
     def backward_propagation(self):
